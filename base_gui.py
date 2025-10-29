@@ -52,74 +52,85 @@ for output in [walk_suitability, bus_suitability, drive_suitability]:
     output['medium'] = fuzz.trimf(output.universe, [30, 50, 70])
     output['high'] = fuzz.trapmf(output.universe, [60, 75, 100, 100])
 
-# Section 4: Fuzzy Rules - Complete rule base to ensure all outputs are activated
+# Section 4: Fuzzy Rules Definition
 rules = []
 
-# ===== WALKING RULES =====
-# Very short distances - walking is great
-rules.append(ctrl.Rule(distance['very_near'] & rain['none'], walk_suitability['high']))
-rules.append(ctrl.Rule(distance['very_near'] & rain['light'], walk_suitability['high']))
-rules.append(ctrl.Rule(distance['very_near'] & rain['moderate'], walk_suitability['medium']))
-rules.append(ctrl.Rule(distance['very_near'] & rain['heavy'], walk_suitability['low']))
-rules.append(ctrl.Rule(distance['very_near'] & rain['extreme'], walk_suitability['low']))
+# ---------- TABLE 1: Favorable crowding (empty/comfortable) ----------
 
-# Short distances
-rules.append(ctrl.Rule(distance['near'] & rain['none'], walk_suitability['high']))
-rules.append(ctrl.Rule(distance['near'] & rain['light'], walk_suitability['medium']))
-rules.append(ctrl.Rule(distance['near'] & rain['moderate'], walk_suitability['low']))
-rules.append(ctrl.Rule(distance['near'] & (rain['heavy'] | rain['extreme']), walk_suitability['low']))
+for crowd_state in ['empty', 'comfortable']:
+    # Rain: none
+    rules.append(ctrl.Rule(distance['very_near'] & rain['none'] & crowd[crowd_state],  walk_suitability['high']))
+    rules.append(ctrl.Rule(distance['near']      & rain['none'] & crowd[crowd_state],  walk_suitability['high']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['none'] & crowd[crowd_state],  bus_suitability['high']))
+    rules.append(ctrl.Rule(distance['far']       & rain['none'] & crowd[crowd_state],  bus_suitability['high']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['none'] & crowd[crowd_state],  bus_suitability['high']))
 
-# Medium to far distances - walking not suitable
-rules.append(ctrl.Rule(distance['medium'], walk_suitability['low']))
-rules.append(ctrl.Rule(distance['far'], walk_suitability['low']))
-rules.append(ctrl.Rule(distance['very_far'], walk_suitability['low']))
+    # Rain: light
+    rules.append(ctrl.Rule(distance['very_near'] & rain['light'] & crowd[crowd_state], walk_suitability['high']))
+    rules.append(ctrl.Rule(distance['near']      & rain['light'] & crowd[crowd_state], walk_suitability['medium']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['light'] & crowd[crowd_state], bus_suitability['high']))
+    rules.append(ctrl.Rule(distance['far']       & rain['light'] & crowd[crowd_state], bus_suitability['high']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['light'] & crowd[crowd_state], bus_suitability['medium']))
 
-# ===== BUS RULES =====
-# Very close - bus not needed
-rules.append(ctrl.Rule(distance['very_near'], bus_suitability['low']))
+    # Rain: moderate
+    rules.append(ctrl.Rule(distance['very_near'] & rain['moderate'] & crowd[crowd_state], walk_suitability['medium']))
+    rules.append(ctrl.Rule(distance['near']      & rain['moderate'] & crowd[crowd_state], walk_suitability['medium']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['moderate'] & crowd[crowd_state], bus_suitability['high']))
+    rules.append(ctrl.Rule(distance['far']       & rain['moderate'] & crowd[crowd_state], bus_suitability['high']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['moderate'] & crowd[crowd_state], bus_suitability['medium']))
 
-# Short to medium distance with good crowding
-rules.append(ctrl.Rule(distance['near'] & (crowd['empty'] | crowd['comfortable']), bus_suitability['high']))
-rules.append(ctrl.Rule(distance['near'] & crowd['moderate'], bus_suitability['medium']))
-rules.append(ctrl.Rule(distance['near'] & (crowd['crowded'] | crowd['overcrowded']), bus_suitability['low']))
+    # Rain: heavy
+    rules.append(ctrl.Rule(distance['very_near'] & rain['heavy'] & crowd[crowd_state],  walk_suitability['low']))
+    rules.append(ctrl.Rule(distance['near']      & rain['heavy'] & crowd[crowd_state],  bus_suitability['medium']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['heavy'] & crowd[crowd_state],  bus_suitability['high']))
+    rules.append(ctrl.Rule(distance['far']       & rain['heavy'] & crowd[crowd_state],  bus_suitability['medium']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['heavy'] & crowd[crowd_state],  drive_suitability['low']))
 
-rules.append(ctrl.Rule(distance['medium'] & (crowd['empty'] | crowd['comfortable']), bus_suitability['high']))
-rules.append(ctrl.Rule(distance['medium'] & crowd['moderate'], bus_suitability['medium']))
-rules.append(ctrl.Rule(distance['medium'] & (crowd['crowded'] | crowd['overcrowded']), bus_suitability['low']))
+    # Rain: extreme
+    rules.append(ctrl.Rule(distance['very_near'] & rain['extreme'] & crowd[crowd_state], bus_suitability['medium']))
+    rules.append(ctrl.Rule(distance['near']      & rain['extreme'] & crowd[crowd_state], bus_suitability['medium']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['extreme'] & crowd[crowd_state], bus_suitability['medium']))
+    rules.append(ctrl.Rule(distance['far']       & rain['extreme'] & crowd[crowd_state], bus_suitability['medium']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['extreme'] & crowd[crowd_state], drive_suitability['medium']))
 
-# Far distances
-rules.append(ctrl.Rule(distance['far'] & (crowd['empty'] | crowd['comfortable']), bus_suitability['high']))
-rules.append(ctrl.Rule(distance['far'] & crowd['moderate'], bus_suitability['medium']))
-rules.append(ctrl.Rule(distance['far'] & (crowd['crowded'] | crowd['overcrowded']), bus_suitability['low']))
 
-rules.append(ctrl.Rule(distance['very_far'] & (crowd['empty'] | crowd['comfortable']), bus_suitability['medium']))
-rules.append(ctrl.Rule(distance['very_far'] & ~(crowd['empty'] | crowd['comfortable']), bus_suitability['low']))
+# ---------- TABLE 2: Unfavorable crowding (crowded/overcrowded) ----------
 
-# Extreme rain makes bus attractive even if crowded
-rules.append(ctrl.Rule(rain['extreme'] & crowd['empty'], bus_suitability['high']))
+for crowd_state in ['crowded', 'overcrowded']:
+    # Rain: none
+    rules.append(ctrl.Rule(distance['very_near'] & rain['none'] & crowd[crowd_state],  walk_suitability['high']))
+    rules.append(ctrl.Rule(distance['near']      & rain['none'] & crowd[crowd_state],  walk_suitability['low']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['none'] & crowd[crowd_state],  drive_suitability['medium']))
+    rules.append(ctrl.Rule(distance['far']       & rain['none'] & crowd[crowd_state],  drive_suitability['high']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['none'] & crowd[crowd_state],  drive_suitability['high']))
 
-# ===== DRIVING RULES =====
-# Very close or close - driving not efficient
-rules.append(ctrl.Rule(distance['very_near'], drive_suitability['low']))
-rules.append(ctrl.Rule(distance['near'] & rain['none'], drive_suitability['low']))
-rules.append(ctrl.Rule(distance['near'] & rain['light'], drive_suitability['low']))
-rules.append(ctrl.Rule(distance['near'] & rain['moderate'], drive_suitability['medium']))
-rules.append(ctrl.Rule(distance['near'] & (rain['heavy'] | rain['extreme']), drive_suitability['medium']))
+    # Rain: light
+    rules.append(ctrl.Rule(distance['very_near'] & rain['light'] & crowd[crowd_state], walk_suitability['medium']))
+    rules.append(ctrl.Rule(distance['near']      & rain['light'] & crowd[crowd_state], bus_suitability['low']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['light'] & crowd[crowd_state], drive_suitability['medium']))
+    rules.append(ctrl.Rule(distance['far']       & rain['light'] & crowd[crowd_state], drive_suitability['high']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['light'] & crowd[crowd_state], drive_suitability['high']))
 
-# Medium distance - contextual
-rules.append(ctrl.Rule(distance['medium'] & rain['none'] & crowd['comfortable'], drive_suitability['low']))
-rules.append(ctrl.Rule(distance['medium'] & rain['light'] & crowd['comfortable'], drive_suitability['low']))
-rules.append(ctrl.Rule(distance['medium'] & rain['moderate'], drive_suitability['medium']))
-rules.append(ctrl.Rule(distance['medium'] & (rain['heavy'] | rain['extreme']), drive_suitability['high']))
-rules.append(ctrl.Rule(distance['medium'] & crowd['overcrowded'], drive_suitability['medium']))
+    # Rain: moderate
+    rules.append(ctrl.Rule(distance['very_near'] & rain['moderate'] & crowd[crowd_state], bus_suitability['low']))
+    rules.append(ctrl.Rule(distance['near']      & rain['moderate'] & crowd[crowd_state], drive_suitability['medium']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['moderate'] & crowd[crowd_state], drive_suitability['high']))
+    rules.append(ctrl.Rule(distance['far']       & rain['moderate'] & crowd[crowd_state], drive_suitability['high']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['moderate'] & crowd[crowd_state], drive_suitability['high']))
 
-# Far distances - driving becomes attractive
-rules.append(ctrl.Rule(distance['far'] & rain['none'], drive_suitability['medium']))
-rules.append(ctrl.Rule(distance['far'] & (rain['light'] | rain['moderate']), drive_suitability['high']))
-rules.append(ctrl.Rule(distance['far'] & (rain['heavy'] | rain['extreme']), drive_suitability['high']))
+    # Rain: heavy
+    rules.append(ctrl.Rule(distance['very_near'] & rain['heavy'] & crowd[crowd_state],  drive_suitability['medium']))
+    rules.append(ctrl.Rule(distance['near']      & rain['heavy'] & crowd[crowd_state],  drive_suitability['medium']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['heavy'] & crowd[crowd_state],  drive_suitability['high']))
+    rules.append(ctrl.Rule(distance['far']       & rain['heavy'] & crowd[crowd_state],  drive_suitability['high']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['heavy'] & crowd[crowd_state],  drive_suitability['high']))
 
-# Very far - driving is best
-rules.append(ctrl.Rule(distance['very_far'], drive_suitability['high']))
+    # Rain: extreme
+    rules.append(ctrl.Rule(distance['very_near'] & rain['extreme'] & crowd[crowd_state], drive_suitability['medium']))
+    rules.append(ctrl.Rule(distance['near']      & rain['extreme'] & crowd[crowd_state], drive_suitability['medium']))
+    rules.append(ctrl.Rule(distance['medium']    & rain['extreme'] & crowd[crowd_state], drive_suitability['high']))
+    rules.append(ctrl.Rule(distance['far']       & rain['extreme'] & crowd[crowd_state], drive_suitability['high']))
+    rules.append(ctrl.Rule(distance['very_far']  & rain['extreme'] & crowd[crowd_state], drive_suitability['high']))
 
 # Create control system
 system = ctrl.ControlSystem(rules)
