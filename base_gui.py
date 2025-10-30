@@ -18,139 +18,115 @@ distance = ctrl.Antecedent(np.arange(0, 21, 0.1), 'distance')
 rain = ctrl.Antecedent(np.arange(0, 101, 0.5), 'rain_intensity')
 crowd = ctrl.Antecedent(np.arange(0, 1.51, 0.01), 'bus_crowding')
 
-# Output
+# Output 
 walk_suitability = ctrl.Consequent(np.arange(0, 101, 1), 'walk_suitability', defuzzify_method='centroid')
 bus_suitability = ctrl.Consequent(np.arange(0, 101, 1), 'bus_suitability', defuzzify_method='centroid')
 drive_suitability = ctrl.Consequent(np.arange(0, 101, 1), 'drive_suitability', defuzzify_method='centroid')
 
 # Section 3: Membership functions
 # Input MF
-# Distance
+# Distance (5 terms)
 distance['very_near'] = fuzz.trapmf(distance.universe, [0, 0, 1, 2.5])
 distance['near'] = fuzz.trimf(distance.universe, [1, 3, 5])
 distance['medium'] = fuzz.trimf(distance.universe, [3.5, 7, 10.5])
 distance['far'] = fuzz.trimf(distance.universe, [9, 13, 17])
 distance['very_far'] = fuzz.trapmf(distance.universe, [15, 17.5, 20, 20])
 
-# Rain Intensity
-rain['none'] = fuzz.trapmf(rain.universe, [0, 0, 2, 5])
-rain['light'] = fuzz.trimf(rain.universe, [2, 8, 15])
-rain['moderate'] = fuzz.trimf(rain.universe, [12, 25, 40])
-rain['heavy'] = fuzz.trimf(rain.universe, [35, 55, 75])
-rain['extreme'] = fuzz.trapmf(rain.universe, [65, 80, 100, 100])
+# Rain Intensity (3 terms)
+rain['low'] = fuzz.trapmf(rain.universe, [0, 0, 10, 30])
+rain['moderate'] = fuzz.trimf(rain.universe, [20, 50, 80])
+rain['heavy'] = fuzz.trapmf(rain.universe, [70, 90, 100, 100])
 
-# Bus Crowding
-crowd['empty'] = fuzz.trapmf(crowd.universe, [0, 0, 0.2, 0.4])
-crowd['comfortable'] = fuzz.trimf(crowd.universe, [0.3, 0.5, 0.7])
-crowd['moderate'] = fuzz.trimf(crowd.universe, [0.6, 0.85, 1.1])
-crowd['crowded'] = fuzz.trimf(crowd.universe, [1.0, 1.2, 1.4])
-crowd['overcrowded'] = fuzz.trapmf(crowd.universe, [1.3, 1.4, 1.5, 1.5])
+# Bus Crowding (3 terms)
+crowd['low'] = fuzz.trapmf(crowd.universe, [0, 0, 0.3, 0.6])
+crowd['medium'] = fuzz.trimf(crowd.universe, [0.4, 0.8, 1.2])
+crowd['high'] = fuzz.trapmf(crowd.universe, [1.0, 1.3, 1.5, 1.5])
 
-# Output MF
+# Output MF (3 terms)
 for output in [walk_suitability, bus_suitability, drive_suitability]:
     output['low'] = fuzz.trapmf(output.universe, [0, 0, 25, 40])
     output['medium'] = fuzz.trimf(output.universe, [30, 50, 70])
     output['high'] = fuzz.trapmf(output.universe, [60, 75, 100, 100])
 
+
 # Section 4: Fuzzy Rules Definition
 rules = []
 
-# ---------- TABLE 1: Favorable crowding (empty/comfortable) ----------
+# Distance labels used as columns (5 terms)
+D_COLS = ['very_near', 'near', 'medium', 'far', 'very_far']
+# Rain labels used as rows (3 terms)
+R_ROWS = ['low', 'moderate', 'heavy']
+# Crowd labels used as tables (3 terms)
+C_TABLES = ['low', 'medium', 'high']
 
-for crowd_state in ['empty', 'comfortable']:
-    # Rain: none
-    rules.append(ctrl.Rule(distance['very_near'] & rain['none'] & crowd[crowd_state],  walk_suitability['high']))
-    rules.append(ctrl.Rule(distance['near']      & rain['none'] & crowd[crowd_state],  walk_suitability['high']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['none'] & crowd[crowd_state],  bus_suitability['high']))
-    rules.append(ctrl.Rule(distance['far']       & rain['none'] & crowd[crowd_state],  bus_suitability['high']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['none'] & crowd[crowd_state],  bus_suitability['high']))
+# Helper to add a single rule from (mode, level)
+def _add_rule(d_lab, r_lab, c_lab, mode, level):
+    cons_map = {'walk': walk_suitability, 'bus': bus_suitability, 'drive': drive_suitability}
+    rules.append(ctrl.Rule(distance[d_lab] & rain[r_lab] & crowd[c_lab], cons_map[mode][level]))
 
-    # Rain: light
-    rules.append(ctrl.Rule(distance['very_near'] & rain['light'] & crowd[crowd_state], walk_suitability['high']))
-    rules.append(ctrl.Rule(distance['near']      & rain['light'] & crowd[crowd_state], walk_suitability['medium']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['light'] & crowd[crowd_state], bus_suitability['high']))
-    rules.append(ctrl.Rule(distance['far']       & rain['light'] & crowd[crowd_state], bus_suitability['high']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['light'] & crowd[crowd_state], bus_suitability['medium']))
+# --- NEW RULE TABLES (5x3x3 = 45 rules) ---
 
-    # Rain: moderate
-    rules.append(ctrl.Rule(distance['very_near'] & rain['moderate'] & crowd[crowd_state], walk_suitability['medium']))
-    rules.append(ctrl.Rule(distance['near']      & rain['moderate'] & crowd[crowd_state], walk_suitability['medium']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['moderate'] & crowd[crowd_state], bus_suitability['high']))
-    rules.append(ctrl.Rule(distance['far']       & rain['moderate'] & crowd[crowd_state], bus_suitability['high']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['moderate'] & crowd[crowd_state], bus_suitability['medium']))
+# Table 1: Bus Crowding = low (Bus is favorable/Walk for short distances)
+T_LOW_CROWD = {
+    # Dist: V_Near, Near, Medium, Far, V_Far
+    'low':      {'very_near': ('walk','high'),  'near': ('walk','high'),  'medium': ('bus','high'),  'far': ('bus','high'),  'very_far': ('bus','high')},
+    'moderate': {'very_near': ('walk','medium'),'near': ('walk','medium'),'medium': ('bus','high'),  'far': ('bus','high'),  'very_far': ('bus','medium')},
+    'heavy':    {'very_near': ('walk','low'),   'near': ('bus','medium'), 'medium': ('bus','high'),  'far': ('drive','medium'),'very_far': ('drive','high')},
+}
 
-    # Rain: heavy
-    rules.append(ctrl.Rule(distance['very_near'] & rain['heavy'] & crowd[crowd_state],  walk_suitability['low']))
-    rules.append(ctrl.Rule(distance['near']      & rain['heavy'] & crowd[crowd_state],  bus_suitability['medium']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['heavy'] & crowd[crowd_state],  bus_suitability['high']))
-    rules.append(ctrl.Rule(distance['far']       & rain['heavy'] & crowd[crowd_state],  bus_suitability['medium']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['heavy'] & crowd[crowd_state],  drive_suitability['low']))
+# Table 2: Bus Crowding = medium (Walk preferred for short, Bus still viable mid-distance, Drive for long)
+T_MEDIUM_CROWD = {
+    # Dist: V_Near, Near, Medium, Far, V_Far
+    'low':      {'very_near': ('walk','high'),  'near': ('walk','medium'),'medium': ('bus','medium'), 'far': ('bus','medium'), 'very_far': ('drive','medium')},
+    'moderate': {'very_near': ('walk','medium'),'near': ('bus','medium'), 'medium': ('bus','medium'), 'far': ('drive','medium'),'very_far': ('drive','medium')},
+    'heavy':    {'very_near': ('bus','low'),    'near': ('drive','medium'),'medium': ('drive','medium'),'far': ('drive','high'),  'very_far': ('drive','high')},
+}
 
-    # Rain: extreme
-    rules.append(ctrl.Rule(distance['very_near'] & rain['extreme'] & crowd[crowd_state], bus_suitability['medium']))
-    rules.append(ctrl.Rule(distance['near']      & rain['extreme'] & crowd[crowd_state], bus_suitability['medium']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['extreme'] & crowd[crowd_state], bus_suitability['medium']))
-    rules.append(ctrl.Rule(distance['far']       & rain['extreme'] & crowd[crowd_state], bus_suitability['medium']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['extreme'] & crowd[crowd_state], drive_suitability['medium']))
+# Table 3: Bus Crowding = high (Bus strongly penalized, Drive preferred for long distance)
+T_HIGH_CROWD = {
+    # Dist: V_Near, Near, Medium, Far, V_Far
+    'low':      {'very_near': ('walk','high'),  'near': ('walk','low'),   'medium': ('drive','medium'),'far': ('drive','high'),  'very_far': ('drive','high')},
+    'moderate': {'very_near': ('walk','medium'),'near': ('bus','low'),    'medium': ('drive','medium'),'far': ('drive','high'),  'very_far': ('drive','high')},
+    'heavy':    {'very_near': ('drive','medium'),'near': ('drive','medium'),'medium': ('drive','high'),  'far': ('drive','high'),  'very_far': ('drive','high')},
+}
 
+# Iterate through all 45 rules and add them
+rule_tables = {'low': T_LOW_CROWD, 'medium': T_MEDIUM_CROWD, 'high': T_HIGH_CROWD}
 
-# ---------- TABLE 2: Unfavorable crowding (crowded/overcrowded) ----------
+for c_lab, table in rule_tables.items():
+    for r_lab, row in table.items():
+        for d_lab, (mode, level) in row.items():
+            _add_rule(d_lab, r_lab, c_lab, mode, level)
 
-for crowd_state in ['crowded', 'overcrowded']:
-    # Rain: none
-    rules.append(ctrl.Rule(distance['very_near'] & rain['none'] & crowd[crowd_state],  walk_suitability['high']))
-    rules.append(ctrl.Rule(distance['near']      & rain['none'] & crowd[crowd_state],  walk_suitability['low']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['none'] & crowd[crowd_state],  drive_suitability['medium']))
-    rules.append(ctrl.Rule(distance['far']       & rain['none'] & crowd[crowd_state],  drive_suitability['high']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['none'] & crowd[crowd_state],  drive_suitability['high']))
+# Baseline rules to ensure every consequent always yields a value (prevents missing outputs)
+any_distance = distance['very_near'] | distance['near'] | distance['medium'] | distance['far'] | distance['very_far']
+any_rain     = rain['low'] | rain['moderate'] | rain['heavy']
+any_crowd    = crowd['low'] | crowd['medium'] | crowd['high']
 
-    # Rain: light
-    rules.append(ctrl.Rule(distance['very_near'] & rain['light'] & crowd[crowd_state], walk_suitability['medium']))
-    rules.append(ctrl.Rule(distance['near']      & rain['light'] & crowd[crowd_state], bus_suitability['low']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['light'] & crowd[crowd_state], drive_suitability['medium']))
-    rules.append(ctrl.Rule(distance['far']       & rain['light'] & crowd[crowd_state], drive_suitability['high']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['light'] & crowd[crowd_state], drive_suitability['high']))
+rules.append(ctrl.Rule(any_distance & any_rain & any_crowd, walk_suitability['low']))
+rules.append(ctrl.Rule(any_distance & any_rain & any_crowd, bus_suitability['low']))
+rules.append(ctrl.Rule(any_distance & any_rain & any_crowd, drive_suitability['low']))
 
-    # Rain: moderate
-    rules.append(ctrl.Rule(distance['very_near'] & rain['moderate'] & crowd[crowd_state], bus_suitability['low']))
-    rules.append(ctrl.Rule(distance['near']      & rain['moderate'] & crowd[crowd_state], drive_suitability['medium']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['moderate'] & crowd[crowd_state], drive_suitability['high']))
-    rules.append(ctrl.Rule(distance['far']       & rain['moderate'] & crowd[crowd_state], drive_suitability['high']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['moderate'] & crowd[crowd_state], drive_suitability['high']))
-
-    # Rain: heavy
-    rules.append(ctrl.Rule(distance['very_near'] & rain['heavy'] & crowd[crowd_state],  drive_suitability['medium']))
-    rules.append(ctrl.Rule(distance['near']      & rain['heavy'] & crowd[crowd_state],  drive_suitability['medium']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['heavy'] & crowd[crowd_state],  drive_suitability['high']))
-    rules.append(ctrl.Rule(distance['far']       & rain['heavy'] & crowd[crowd_state],  drive_suitability['high']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['heavy'] & crowd[crowd_state],  drive_suitability['high']))
-
-    # Rain: extreme
-    rules.append(ctrl.Rule(distance['very_near'] & rain['extreme'] & crowd[crowd_state], drive_suitability['medium']))
-    rules.append(ctrl.Rule(distance['near']      & rain['extreme'] & crowd[crowd_state], drive_suitability['medium']))
-    rules.append(ctrl.Rule(distance['medium']    & rain['extreme'] & crowd[crowd_state], drive_suitability['high']))
-    rules.append(ctrl.Rule(distance['far']       & rain['extreme'] & crowd[crowd_state], drive_suitability['high']))
-    rules.append(ctrl.Rule(distance['very_far']  & rain['extreme'] & crowd[crowd_state], drive_suitability['high']))
-
-# Create control system
 system = ctrl.ControlSystem(rules)
-sim = ctrl.ControlSystemSimulation(system)
 
 # Section 5: Fuzzy Inference Function
 def fis_recommend(dist_km, rain_mmph, crowd_ratio):
     """
     Fuzzy inference for commute recommendation
-    
+
     Parameters:
     - dist_km: distance in km (0-20)
     - rain_mmph: rain intensity in mm/h (0-100)
     - crowd_ratio: bus occupancy ratio (0-1.5)
-    
+
     Returns: label, crisp_score, memberships, inputs, explanation
     """
     d = float(np.clip(dist_km, 0, 20))
     r = float(np.clip(rain_mmph, 0, 100))
     c = float(np.clip(crowd_ratio, 0.0, 1.5))
+
+    # Fresh simulation each call to avoid stale state
+    sim = ctrl.ControlSystemSimulation(system)
 
     try:
         sim.input['distance'] = d
@@ -158,22 +134,35 @@ def fis_recommend(dist_km, rain_mmph, crowd_ratio):
         sim.input['bus_crowding'] = c
         sim.compute()
 
-        walk_score = float(sim.output['walk_suitability'])
-        bus_score = float(sim.output['bus_suitability'])
-        drive_score = float(sim.output['drive_suitability'])
-        
+        # Safe reads: some consequents might have no activation -> missing key
+        outs = sim.output
+
+        def safe_get(name: str) -> float:
+            v = outs[name] if name in outs else 0.0
+            try:
+                v = float(v)
+            except Exception:
+                v = 0.0
+            if np.isnan(v):
+                v = 0.0
+            return v
+
+        walk_score = safe_get('walk_suitability')
+        bus_score = safe_get('bus_suitability')
+        drive_score = safe_get('drive_suitability')
+
     except Exception as e:
-        print(f"FIS computation error: {e}")
+        print(f"FIS compute error: {e}")
         # Default fallback values
-        walk_score = 50.0
-        bus_score = 50.0
-        drive_score = 50.0
-    
+        walk_score = 0.0
+        bus_score = 0.0
+        drive_score = 0.0
+
     # Normalize to 0-1 range for membership display
     mu_w = walk_score / 100.0
     mu_b = bus_score / 100.0
     mu_d = drive_score / 100.0
-    
+
     # Determine recommendation
     scores = {'Walk': walk_score, 'Bus': bus_score, 'Drive': drive_score}
     label = max(scores, key=scores.get)
@@ -182,16 +171,20 @@ def fis_recommend(dist_km, rain_mmph, crowd_ratio):
     # Helper function to get linguistic label
     def best_label(var, value, labels):
         scores_list = [(L, fuzz.interp_membership(var.universe, var[L].mf, value)) for L in labels]
+        # Handle case where all membership is 0 (shouldn't happen with proper MF coverage)
+        if not scores_list:
+            return "N/A"
         return max(scores_list, key=lambda t: t[1])[0]
 
     dL = best_label(distance, d, ['very_near', 'near', 'medium', 'far', 'very_far'])
-    rL = best_label(rain, r, ['none', 'light', 'moderate', 'heavy', 'extreme'])
-    cL = best_label(crowd, c, ['empty', 'comfortable', 'moderate', 'crowded', 'overcrowded'])
+    rL = best_label(rain, r, ['low', 'moderate', 'heavy']) # Updated labels
+    cL = best_label(crowd, c, ['low', 'medium', 'high'])    # Updated labels
 
     explain = (f"{label} (suitability={crisp:.1f}/10) — distance {dL}, rain {rL}, crowd {cL}.")
     return label, crisp, (mu_w, mu_b, mu_d), (d, r, c), explain
 
-# Section 6: GUI Design
+# Section 6: GUI Design (GUI code remains the same as it handles any input range)
+
 class FloatSlider(QWidget):
     valueChanged = Signal(float)
 
@@ -340,19 +333,25 @@ class MinimalWindow(QMainWindow):
         pb = QProgressBar()
         pb.setRange(0, 100)
         pb.setValue(0)
+        pb.setTextVisible(True)
         pb.setFormat("%p%")
         pb.setStyleSheet(f"QProgressBar::chunk {{ background:{color_hex}; border-radius:6px; }}")
         box.layout.addWidget(pb)
+        val = QLabel("0%")
+        val.setStyleSheet("color:#6b7280;")
+        box.layout.addWidget(val)
         box.progress = pb
+        box.value_label = val
         return box
 
     def on_reset(self):
+        # Reset to new sensible defaults for the new system
         self.sl_dist.setValue(5.0)
         self.sl_rain.setValue(10.0)
         self.sl_crowd.setValue(0.7)
         self.recompute()
 
-    def recompute(self):
+    def recompute(self, *_):  # Accept and ignore signal args
         d = self.sl_dist.value()
         r = self.sl_rain.value()
         c = self.sl_crowd.value()
@@ -371,6 +370,11 @@ class MinimalWindow(QMainWindow):
         self.pb_bus.progress.setValue(int(round(mu_b * 100)))
         self.pb_drive.progress.setValue(int(round(mu_d * 100)))
 
+        # Update numeric labels so percentages are always visible
+        self.pb_walk.value_label.setText(f"{int(round(mu_w * 100))}%")
+        self.pb_bus.value_label.setText(f"{int(round(mu_b * 100))}%")
+        self.pb_drive.value_label.setText(f"{int(round(mu_d * 100))}%")
+
 class QVBoxLayoutWidget(QWidget):
     """Tiny helper for a titled vertical block without borders."""
 
@@ -383,6 +387,8 @@ class QVBoxLayoutWidget(QWidget):
             lbl = QLabel(title)
             lbl.setStyleSheet("color:#374151; font-weight:600;")
             lay.addWidget(lbl)
+
+# Entrypoint
 
 def main():
     app = QApplication(sys.argv)
