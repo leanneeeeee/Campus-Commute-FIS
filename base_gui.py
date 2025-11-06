@@ -64,7 +64,7 @@ def _add_rule(d_lab, r_lab, c_lab, mode, level):
     cons_map = {'walk': walk_suitability, 'bus': bus_suitability, 'drive': drive_suitability}
     rules.append(ctrl.Rule(distance[d_lab] & rain[r_lab] & crowd[c_lab], cons_map[mode][level]))
 
-# --- NEW RULE TABLES (5x3x3 = 45 rules) ---
+# RULE TABLES (5x3x3 = 45 rules)
 
 # Table 1: Bus Crowding = low (Bus is favorable/Walk for short distances)
 T_LOW_CROWD = {
